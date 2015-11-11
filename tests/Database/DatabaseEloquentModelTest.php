@@ -150,6 +150,49 @@ class DatabaseEloquentModelTest extends PHPUnit_Framework_TestCase
         $this->assertTrue($model->save());
     }
 
+
+    public function testUpdateProcessFailsWhenDatabaseReturnsZeroAffectedRows()
+    {
+        $model = $this->getMock('EloquentModelStub', ['newQueryWithoutScopes', 'updateTimestamps']);
+        $query = m::mock('Illuminate\Database\Eloquent\Builder');
+        $query->shouldReceive('where')->once()->with('id', '=', 1);
+        $query->shouldReceive('update')->once()->with(['name' => 'taylor'])->andReturn(0);
+        $model->expects($this->once())->method('newQueryWithoutScopes')->will($this->returnValue($query));
+        $model->expects($this->once())->method('updateTimestamps');
+        $model->setEventDispatcher($events = m::mock('Illuminate\Contracts\Events\Dispatcher'));
+        $events->shouldReceive('until')->once()->with('eloquent.saving: '.get_class($model), $model)->andReturn(true);
+        $events->shouldReceive('until')->once()->with('eloquent.updating: '.get_class($model), $model)->andReturn(true);
+
+        $model->id = 1;
+        $model->foo = 'bar';
+        // make sure foo isn't synced so we can test that dirty attributes only are updated
+        $model->syncOriginal();
+        $model->name = 'taylor';
+        $model->exists = true;
+        $this->assertFalse($model->save());
+    }
+
+    public function testUpdateProcessSuccessfulWhenModelIsNotDirty()
+    {
+        $model = $this->getMock('EloquentModelStub', ['newQueryWithoutScopes', 'updateTimestamps']);
+        $query = m::mock('Illuminate\Database\Eloquent\Builder');
+        $query->shouldNotReceive('update');
+        $model->expects($this->once())->method('newQueryWithoutScopes')->will($this->returnValue($query));
+        $model->expects($this->never())->method('updateTimestamps');
+        $model->setEventDispatcher($events = m::mock('Illuminate\Contracts\Events\Dispatcher'));
+        $events->shouldReceive('until')->once()->with('eloquent.saving: '.get_class($model), $model)->andReturn(true);
+        $events->shouldReceive('until')->never();
+        $events->shouldReceive('fire')->never();
+        $events->shouldReceive('fire')->once()->with('eloquent.saved: '.get_class($model), $model)->andReturn(true);
+
+        $model->id = 1;
+        $model->foo = 'bar';
+        // make sure foo isn't synced so we can test that dirty attributes only are updated
+        $model->syncOriginal();
+        $model->exists = true;
+        $this->assertTrue($model->save());
+    }
+
     public function testUpdateProcessDoesntOverrideTimestamps()
     {
         $model = $this->getMock('EloquentModelStub', ['newQueryWithoutScopes']);

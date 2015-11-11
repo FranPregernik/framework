@@ -1548,6 +1548,10 @@ abstract class Model implements ArrayAccess, Arrayable, Jsonable, JsonSerializab
     {
         $dirty = $this->getDirty();
 
+        // by default if the model is not dirty it should complete the update operation
+        // successfully
+        $updated = true;
+
         if (count($dirty) > 0) {
             // If the updating event returns false, we will cancel the update operation so
             // developers can hook Validation systems into their models and cancel this
@@ -1571,11 +1575,17 @@ abstract class Model implements ArrayAccess, Arrayable, Jsonable, JsonSerializab
             if (count($dirty) > 0) {
                 $numRows = $this->setKeysForSaveQuery($query)->update($dirty);
 
-                $this->fireModelEvent('updated', false);
+                // The expectation is the update returns the number of updated rows or
+                // 0 if no rows were updated
+                $updated = $numRows > 0;
+
+                if ($updated) {
+                    $this->fireModelEvent('updated', false);
+                }
             }
         }
 
-        return true;
+        return $updated;
     }
 
     /**
